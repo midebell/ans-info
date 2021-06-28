@@ -1,0 +1,36 @@
+---
+- name: Create conf.d
+  file:
+    path: "{{ postgresql_conf_dir }}/conf.d"
+    state: directory
+    owner: "{{ postgresql_user }}"
+    group: "{{ postgresql_group }}"
+
+- name: Configure global settings.
+  lineinfile:
+    dest: "{{ postgresql_conf_dir }}/postgresql.conf"
+    regexp: "^#?{{ item.option }}.+$"
+    line: "{{ item.option }} = '{{ item.value }}'"
+    state: "{{ item.state | default('present') }}"
+    mode: 0644
+  with_items: "{{ postgresql_global_config_options }}"
+  notify: Reload PostgreSQL
+
+- name: Install pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_conf_dir }}/pg_hba.conf"
+    owner: "{{ postgresql_user }}"
+    group: "{{ postgresql_group }}"
+    mode: 0400
+    backup: yes
+  notify: Reload PostgreSQL
+
+- name: Ensure PostgreSQL unix socket dirs exist.
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ postgresql_user }}"
+    group: "{{ postgresql_group }}"
+    mode: "{{ postgresql_unix_socket_directories_mode }}"
+  with_items: "{{ postgresql_unix_socket_directories }}"

@@ -1,0 +1,32 @@
+---
+postgresql_default_version: 12
+postgresql_user: postgres
+postgresql_group: postgres
+informatica_user: informatica
+informatica_passwd: 
+
+postgresql_python_library: python-psycopg2
+
+postgresql_auth_method: "{{ ansible_fips  | ternary('scram-sha-256', 'md5') }}"
+
+postgresql_hba_entries:
+  - {type: local, database: all, user: postgres, auth_method: peer}
+  - {type: local, database: all, user: all, auth_method: md5}
+  - {type: host, database: all, user: all, address: '127.0.0.1/32', auth_method: "{{ postgresql_auth_method }}"}
+  - {type: host, database: all, user: all, address: '::1/128', auth_method: "{{ postgresql_auth_method }}"}
+
+postgresql_unix_socket_directories:
+  - /var/run/postgresql
+
+postgresql_global_config_options:
+  - option: unix_socket_directories
+    value: '{{ postgresql_unix_socket_directories | join(",") }}'
+
+# Whether to output user data when managing users.
+postgres_users_no_log: true
+
+# Databases to ensure exist.
+postgresql_databases: []
+
+# Users to ensure exist.
+postgresql_users: []
