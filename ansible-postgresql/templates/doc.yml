@@ -1,0 +1,126 @@
+- name: Copy sql query
+  template:
+    src: init-db.sh.j2
+    owner: informatica
+    group: informatica
+    mode: 0700
+    backup: yes
+    dest: "/home/informatica/init-db.sh"
+
+
+- name: create users,database and permissions
+  become: true
+  become_user: informatica
+  shell: ./init-db.sh
+  args:
+    chdir: /home/informatica
+    
+ ---
+- name: Update bashrc_file
+  template:
+    src: bashrc.j2
+    dest: "{{ informatica_home }}.bashrc"
+    owner: "{{ informatica_user }}"
+    group: "{{ informatica_group }}"
+    mode: 0644
+    backup: yes
+
+- name: "Create dir {{ data_dir }}"
+  file:
+    path: "{{ data_dir }}"
+    state: directory
+    owner: "{{ informatica_user }}"
+    group: "{{ informatica_group }}"
+    mode: '0755'
+
+- name: "Create dir {{ work_dir }}"
+  file:
+    path: "{{ work_dir }}"
+    state: directory
+    owner: "{{ informatica_user }}"
+    group: "{{ informatica_group }}"
+    mode: '0755'
+    
+ ---
+- name: Extract file
+  unarchive:
+    src: "{{ tar_file_location }}"
+    dest: "{{ data_dir }}"
+    owner: "{{ informatica_user }}"
+    group: "{{ informatica_group }}"
+    mode: '0755'
+    creates: "{{ informatica_exec_file }}"
+    remote_src: True
+
+- name: open ports 6000 - 6200
+  firewalld:
+    port: 6000-6200/tcp
+    permanent: yes
+    zone: public
+    state: enabled
+
+- name: open ports 8105
+  firewalld:
+    port: 8105/tcp
+    permanent: yes
+    zone: public
+    state: enabled
+
+- name: open ports 8095
+  firewalld:
+    port: 8095/tcp
+    permanent: yes
+    zone: public
+    state: enabled
+
+- name: make file executable
+  file:
+    path: "{{ informatica_exec_file }}"
+    owner: "{{ informatica_user }}"
+    group: "{{ informatica_group }}"
+    mode: 'a+x'
+
+---
+- name: change silent properties files
+  template:
+    src: SilentInput.properties.j2
+    dest: "{{ data_dir }}/SilentInput.properties"
+    owner: "{{ informatica_user }}"
+    group: "{{ informatica_group }}"
+    mode: '0755'
+    backup: yes
+
+- name: install informatica
+  become: true
+  become_user: "{{ informatica_user }}"
+  shell: ./silentinstall.sh
+  args:
+    chdir: "{{ data_dir }}"
+
+- name: Update bashrc_file
+  template:
+    src: bashrc_after_install.j2
+    dest: "{{ informatica_home }}.bashrc"
+    owner: "{{ informatica_user }}"
+    group: "{{ informatica_group }}"
+    mode: 0644
+    backup: yes
+
+- name: start informatica
+  become: true
+  become_user: "{{ informatica_user }}"
+  shell: ./infaservice.sh startup
+  args:
+    chdir: "{{ informatica_start_up_dir }}"
+
+
+
+
+---
+
+# Set variables
+- include_tasks: configure.yml
+- include_tasks: extract_file.yml
+- include_tasks: install.yml
+
+
