@@ -5,15 +5,15 @@
     state: present
     regexp: '^max_connections'
     line: 'max_connections = 4000'
-  notify: Reload PostgreSQL
+  notify: Restart PostgreSQL
 
 - name: update shared_buffers value
   lineinfile:
     dest: "{{ postgresql_conf_dir }}/postgresql.conf"
     state: present
     regexp: '^shared_buffers'
-    line: 'shared_buffers = 8GB'
-  notify: Reload PostgreSQL
+    line: 'shared_buffers = 1GB'
+  notify: Restart PostgreSQL
 
 - name: update max_locks_per_transaction value
   lineinfile:
@@ -21,4 +21,4 @@
     state: present
     regexp: '^max_locks_per_transaction'
     line: 'max_locks_per_transaction = 1024'
-  notify: Reload PostgreSQL
+  notify: Restart PostgreSQL

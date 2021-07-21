@@ -1,13 +1,9 @@
 ---
-# For RedHat we use the value from defaults/main.yml
+
 - name: Set version fact
   set_fact:
     postgresql_version: "{{ postgresql_default_version }}"
   when: ansible_os_family == "RedHat" and postgresql_version is not defined
-
-# Sets postgresql_pgdata, postgresql_conf_dir
-- name: Set OS-specific variables
-  include_vars: "{{ ansible_os_family | lower }}.yml"
 
 - name: Set pgdata fact
   set_fact:
@@ -18,9 +14,3 @@
   set_fact:
     postgresql_conf_dir: "{{ postgresql_conf_dir_default }}"
   when: postgresql_conf_dir is not defined
-
-- name: Define postgresql_unix_socket_directories_mode.
-  set_fact:
-    postgresql_unix_socket_directories_mode: >-
-      {{ __postgresql_unix_socket_directories_mode | default('02775') }}
-  when: postgresql_unix_socket_directories_mode is not defined

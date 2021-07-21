@@ -1,24 +1,21 @@
 ---
 
 # Set variables
-- include_tasks: informatica-user.yml
 - include_tasks: set-variables.yml
-
-# Needs postgresql_pgdata set
-- include_tasks: redhat.yml
-  when: ansible_os_family == "RedHat"
+- include_tasks: install-pg.yml
 
 # Initialize and configure directories
 - include_tasks: configure.yml
 
-- name: Ensure PostgreSQL is running
-  service:
-    name: "{{ postgresql_service_name }}"
-    enabled: yes
-    state: started
-
 - include_tasks: update-config.yml
 
+- name: Ensure PostgreSQL is started and enabled on boot.
+  service:
+    name: "{{ postgresql_service_name }}"
+    state: "{{ postgresql_service_state }}"
+    enabled: "{{ postgresql_service_enabled }}"
+
 # Configure PostgreSQL.
-- import_tasks: users.yml
-- import_tasks: db.yml
+- import_tasks: create_user_db.yml
+# - import_tasks: db.yml
+# - import_tasks: users_props.yml
