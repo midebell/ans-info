@@ -1,0 +1,10 @@
+---
+- name: Install pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_conf_dir }}/pg_hba.conf"
+    owner: "{{ postgresql_user }}"
+    group: "{{ postgresql_group }}"
+    mode: 0400
+    backup: yes
+  notify: Restart PostgreSQL

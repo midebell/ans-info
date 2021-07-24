@@ -1,0 +1,16 @@
+---
+
+- name: Set version fact
+  set_fact:
+    postgresql_version: "{{ postgresql_default_version }}"
+  when: ansible_os_family == "RedHat" and postgresql_version is not defined
+
+- name: Set pgdata fact
+  set_fact:
+    postgresql_pgdata: "{{ postgresql_pgdata_default }}"
+  when: postgresql_pgdata is not defined
+
+- name: Set conf dir fact
+  set_fact:
+    postgresql_conf_dir: "{{ postgresql_conf_dir_default }}"
+  when: postgresql_conf_dir is not defined
