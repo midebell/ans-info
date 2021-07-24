@@ -2,4 +2,16 @@
 
 - name: Run shell
   shell: echo "hello world"
+  register: result
+
+- debug:
+    var: result
+    verbosity: 2
+
+- name: Run command
+  shell: ls -la
+  register: result
   
+- debug:
+    var: result
+    verbosity: 2
