@@ -1,0 +1,5 @@
+---
+
+- name: Run shell
+  shell: echo "hello world"
+  
