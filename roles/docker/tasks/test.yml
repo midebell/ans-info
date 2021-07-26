@@ -1,0 +1,134 @@
+import argparse
+import subprocess
+from subprocess import PIPE
+from datetime import datetime
+import os
+import sys
+import tempfile
+
+parser = argparse.ArgumentParser(description='Gather variables needed for configuration')
+
+parser.add_argument(
+    '--vault-url', '-v', required=True, dest='vault_addr', help='vault url (example: http://vault.com)',
+)
+parser.add_argument(
+    '--git-url', '-g', required=True, dest='git_url', help='git url for ansible role (example: git@github.com:midebell/ans-info.git)'
+)
+parser.add_argument(
+    '--git-private-key-path', '-p', required=True, dest='git_key', default='~/.ssh/id_rsa', help='path to git private key to login to git (example: ~/.ssh/id_rsa )'
+)
+parser.add_argument(
+    '--aws-private-key-path', '-a', required=True, dest='aws_key', help='path to aws private key to login to aws (example: ~/.ssh/aws-pem-file )'
+)
+parser.add_argument(
+    '--docker-image-name', '-i', required=True, dest='docker_image', help='docker image name for running ansible playbook (example: imagename ). Do not include tag!'
+)
+parser.add_argument(
+    '--docker-image-tag', '-t', required=True, dest='docker_tag', help='docker image tag for running ansible playbook (example: tag )'
+)
+args = parser.parse_args()
+
+
+class NiceLogger:
+    def log(self, message):
+        datenow = datetime.today().strftime('%d-%m-%Y %H:%M:%S')
+        print("{0} |  {1}".format(datenow, message))
+
+
+class EnvSetup:
+    niceLogger = NiceLogger()
+
+    # print(args.docker_tag)
+    def validate_image(self, image, tag):
+        command = ["docker", "pull", image + ":" + tag]
+        popen = self.run_command(command)
+        error = popen.stderr.readline().decode("utf-8")
+        message = " - Pulled " + image + "with tag:" + tag
+        self.error_catch(error, message)
+
+    def validate_git(self, url, path, temp_dir):
+        command = ["git", "clone", "-c", 'core.sshCommand=ssh -i "%s"' % path, url, temp_dir]
+        popen = self.run_command(command)
+        error = popen.stderr.readline().decode("utf-8")
+        message = " - Cloned repo " + url
+        self.error_catch(error, message)
+
+    def container_run(self, image, tag, containerName):
+        command = ["docker", "container", "rm", "-f", containerName]
+        popen = self.run_command(command)
+        command = ["docker", "run", "--name", containerName, "-t", "-d", "-v", cwd + ":/usr/src", "-e", config["e1"], "-e", config["e2"], image + ":" + tag]
+        popen = self.run_command(command)
+        error = popen.stderr.readline().decode("utf-8")
+        message = " - Successfully exec into docker image "
+        self.error_catch(error, message)
+
+    def get_user_home(self, containerName):
+        command = ["docker", "exec", containerName, "bash", "-c", "echo $HOME"]
+        popen = self.run_command(command)
+        error = popen.stderr.readline().decode("utf-8")
+        self.user_home =  popen.stdout.readline().decode("utf-8").strip()
+        message = " - User home is " + self.user_home
+        self.error_catch(error, message)
+
+    def copy_files(self, git_key):
+        command = ["docker", "cp", args.git_key, containerName + ":" + self.user_home + "/.ssh"]
+        popen = self.run_command(command)
+        error = popen.stderr.readline().decode("utf-8")
+        message = " - Successfully copied git private key " + args.git_key + " to container " + containerName
+        self.error_catch(error, message)
+
+    def error_catch(self, error, message):
+        if error != "":
+            error = error.replace("\n", "")
+            self.niceLogger.log("An error occurred:" + error)
+            sys.exit('Exiting due to error!')
+        else:
+            self.niceLogger.log(message)
+
+    def run_command(self, command):
+        debugcommand = " - {0}".format(" ".join(command))
+        self.niceLogger.log(debugcommand)
+        popen = subprocess.Popen(command, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        popen.wait(500)
+        return popen
+
+#variables
+docExec = "/bin/bash"
+containerName = "cname"
+cwd = os.getcwd()
+
+with tempfile.TemporaryDirectory() as temp_dir:
+    print('created temporary directory', temp_dir)
+
+# Config
+config = {
+    "e1": 'VAULT_ADDR="%s"' % args.vault_addr,
+    "e2": 'PRIVATE_KEY="%s"' % args.git_key
+}
+
+niceLogger = NiceLogger()
+niceLogger.log("------start of log------")
+niceLogger.log("Validation stage....")
+
+EnvSetup = EnvSetup()
+EnvSetup.validate_image(args.docker_image, args.docker_tag)
+
+niceLogger.log("Validating git credentials.")
+EnvSetup.validate_git(args.git_url, args.git_key, temp_dir)
+
+niceLogger.log("Exec into docker images")
+EnvSetup.container_run(args.docker_image, args.docker_tag, containerName)
+
+niceLogger.log("Getting user home in docker container")
+EnvSetup.get_user_home(containerName)
+
+niceLogger.log("Copying private key to container")
+EnvSetup.copy_files(args.git_key)
+
+niceLogger.log("------container is now ready to be used------")
+niceLogger.log("Exec into the container by running these commands")
+niceLogger.log("-------------------------------------------------")
+niceLogger.log("docker exec -it cname /bin/bash")
+niceLogger.log("cd /usr/src")
+niceLogger.log("then run the playbook command")
+niceLogger.log("-------------------------------------------------")
