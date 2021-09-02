@@ -215,3 +215,56 @@ variable "vsphere_tag_name" {
   type        = string
   description = "vSphere Tag Details"
 }
+
+
+
+
+
+
+
+
+
+# ======================== #
+# VMware VMs configuration #
+# ======================== #
+
+vm-count = "${vm_count}"
+vm-name = "${vm_name}"
+vm-template-name = "${vm_template}"
+vm-cpu = "${vm_cpu}"
+vm-ram = "${vm_ram}"
+vm-guest-id = "${vm_guest_id}"
+vm-hostname = "${vm_hostname}"
+vsphere_tag_category = "devops"
+vsphere_tag_name = "${vm_tag_name}"
+
+# ============================ #
+# VMware vSphere configuration #
+# ============================ #
+
+# VMware vCenter IP/FQDN
+vsphere-vcenter = ""
+
+# VMware vSphere username used to deploy the infrastructure
+vsphere-user = ""
+
+# VMware vSphere password used to deploy the infrastructure
+vsphere-password = ""
+
+# Skip the verification of the vCenter SSL certificate (true/false)
+vsphere-unverified-ssl = "true"
+
+# vSphere datacenter name where the infrastructure will be deployed
+vsphere-datacenter = ""
+
+# vSphere cluster name where the infrastructure will be deployed
+vsphere-cluster = ""
+
+# vSphere Datastore used to deploy VMs
+vm-datastore = ""
+
+# vSphere Network used to deploy VMs
+vm-network = ""
+
+# Linux virtual machine domain name
+vm-domain = "vsphere.local"
