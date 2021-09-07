@@ -1,17 +1,3 @@
-# =================== #
-# Deploying VMware VM #
-# =================== #
-
-# Connect to VMware vSphere vCenter
-provider "vsphere" {
-  user           = var.vsphere-user
-  password       = var.vsphere-password
-  vsphere_server = var.vsphere-vcenter
-
-  # If you have a self-signed cert
-  allow_unverified_ssl = var.vsphere-unverified-ssl
-}
-
 # Define VMware vSphere
 data "vsphere_datacenter" "dc" {
   name = var.vsphere-datacenter
@@ -41,84 +27,96 @@ data "vsphere_tag_category" "category" {
   name = "${var.vsphere_tag_category}"
 }
 
-terraform {
-  backend "artifactory" {
-    username = "jenkins"
-    password = "Babyboy2009@"
-    url      = "http://192.168.81.175:8081/artifactory"
-    repo     = "terraform-state"
-    subpath  = ""
-  }
-}
-
 resource "vsphere_tag" "tag" {
   name        = "${var.vsphere_tag_name}"
   category_id = "${data.vsphere_tag_category.category.id}"
   description = "Managed by Terraform"
 }
 
-
 # Create VMs
 resource "vsphere_virtual_machine" "vm" {
-  count = var.vm-count
-
-  name             = "${var.vm-name}-${count.index + 1}"
+  count            = var.vm-count
+  name             = var.staticvmname != null ? var.staticvmname : "${var.vm-name}-${count.index + 1}"
   resource_pool_id = data.vsphere_compute_cluster.cluster.resource_pool_id
   datastore_id     = data.vsphere_datastore.datastore.id
-
-  num_cpus = var.vm-cpu
-  memory   = var.vm-ram
-  guest_id = var.vm-guest-id
+  num_cpus         = var.vm-cpu
+  memory           = var.vm-ram
+  guest_id         = data.vsphere_virtual_machine.template.guest_id
+  tags             = ["${vsphere_tag.tag.id}"]
+  scsi_type        = var.scsi_type != "" ? var.scsi_type : data.vsphere_virtual_machine.template.scsi_type
+  firmware         = var.firmware == null ? data.vsphere_virtual_machine.template.firmware : var.firmware
 
   network_interface {
     network_id = data.vsphere_network.network.id
   }
 
   disk {
-    label = "${var.vm-name}-${count.index + 1}-disk"
-    size  = 60
+    label = var.staticvmname != null ? "${var.staticvmname}-disk" : "${var.vm-name}-${count.index + 1}-disk"
+    size  = var.disk_size != null ? var.disk_size : data.vsphere_virtual_machine.template.disks.0.size
   }
 
   clone {
     template_uuid = data.vsphere_virtual_machine.template.id
+    timeout       = var.timeout
 
     customize {
-      timeout = 0
+      dynamic "linux_options" {
+        for_each = var.is_windows_image ? [] : [1]
+        content {
+          host_name = var.staticvmname != null ? var.staticvmname : "${var.vm-hostname}-${count.index + 1}"
+          domain    = var.vm-domain
+        }
+      }
 
-      linux_options {
-        host_name = "${var.vm-hostname}-${count.index + 1}"
-        domain    = var.vm-domain
+      dynamic "windows_options" {
+        for_each = var.is_windows_image ? [1] : []
+        content {
+          computer_name        = var.staticvmname != null ? var.staticvmname : "${var.vm-name}-${count.index + 1}"
+          auto_logon           = var.auto_logon
+          admin_password       = var.local_adminpass
+        }
       }
 
       network_interface {}
     }
   }
-  tags = ["${vsphere_tag.tag.id}"]
 }
+
+
+output "DC_ID" {
+  description = "id of vSphere Datacenter"
+  value       = data.vsphere_datacenter.dc.id
+}
+
+output "VM" {
+  description = "VM Names"
+  value       = vsphere_virtual_machine.vm.*.name
+}
+
+output "ip" {
+  description = "default ip address of the deployed VM"
+  value       = vsphere_virtual_machine.vm.*.default_ip_address
+}
+
+output "guest-ip" {
+  description = "all the registered ip address of the VM"
+  value       = vsphere_virtual_machine.vm.*.guest_ip_addresses
+}
+
+output "uuid" {
+  description = "UUID of the VM in vSphere"
+  value       = vsphere_virtual_machine.vm.*.uuid
+}
+
+output "disk" {
+  description = "Disks of the deployed VM"
+  value       = vsphere_virtual_machine.vm.*.disk
+}
+
+
 #===========================#
 # VMware vCenter connection #
 #===========================#
-
-variable "vsphere-user" {
-  type        = string
-  description = "VMware vSphere user name"
-}
-
-variable "vsphere-password" {
-  type        = string
-  description = "VMware vSphere password"
-}
-
-variable "vsphere-vcenter" {
-  type        = string
-  description = "VMWare vCenter server FQDN / IP"
-}
-
-variable "vsphere-unverified-ssl" {
-  type        = string
-  description = "Is the VMware vCenter using a self signed certificate (true/false)"
-}
-
 variable "vsphere-datacenter" {
   type        = string
   description = "VMWare vSphere datacenter"
@@ -133,24 +131,12 @@ variable "vsphere-cluster" {
 variable "vsphere-template-folder" {
   type        = string
   description = "Template folder"
-  default = "vm-templates"
+  default     = "vm-templates"
 }
 
 #================================#
 # VMware vSphere virtual machine #
 #================================#
-
-variable "vm-count" {
-  type        = string
-  description = "Number of VM"
-  default     =  1
-}
-
-variable "vm-name-prefix" {
-  type        = string
-  description = "Name of VM prefix"
-  default     =  "playtftest"
-}
 
 variable "vm-datastore" {
   type        = string
@@ -168,6 +154,61 @@ variable "vm-linked-clone" {
   default     = "false"
 }
 
+variable "vm-template-name" {
+  type        = string
+  description = "The template to clone to create the VM"
+}
+
+variable "vsphere_tag_category" {
+  type        = string
+  description = "vSphere Tag Catagory Details"
+}
+
+variable "staticvmname" {
+  description = "Static name of the virtual machin."
+  default     = null
+}
+
+variable "scsi_type" {
+  description = "scsi_controller type, acceptable values lsilogic,pvscsi."
+  type        = string
+  default     = ""
+}
+
+variable "firmware" {
+  description = "The firmware interface to use on the virtual machine. Can be one of bios or EFI. Default: Inherited from cloned template"
+  default     = null
+}
+
+variable "disk_size" {
+  description = "disk size(GB) to override template disk size."
+  type        = string
+  default     = null
+}
+
+variable "timeout" {
+  description = "The timeout, in minutes, to wait for the virtual machine clone to complete."
+  type        = number
+  default     = 30
+}
+
+variable "is_windows_image" {
+  description = "Boolean flag to notify when the custom image is windows based."
+  type        = bool
+  default     = false
+}
+
+variable "vm-count" {
+  type        = string
+  description = "Number of VM"
+  default     = 1
+}
+
+variable "vm-name" {
+  type        = string
+  description = "The name of the vSphere virtual machines and the hostname of the machine"
+}
+
 variable "vm-cpu" {
   type        = string
   description = "Number of vCPU for the vSphere virtual machines"
@@ -179,19 +220,15 @@ variable "vm-ram" {
   description = "Amount of RAM for the vSphere virtual machines (example: 2048)"
 }
 
-variable "vm-name" {
+variable "vm-hostname" {
   type        = string
-  description = "The name of the vSphere virtual machines and the hostname of the machine"
+  description = "Linux virtual machine host name for the machine."
+  default     = ""
 }
 
-variable "vm-guest-id" {
+variable "vsphere_tag_name" {
   type        = string
-  description = "The ID of virtual machines operating system"
-}
-
-variable "vm-template-name" {
-  type        = string
-  description = "The template to clone to create the VM"
+  description = "vSphere Tag Details"
 }
 
 variable "vm-domain" {
@@ -200,71 +237,83 @@ variable "vm-domain" {
   default     = ""
 }
 
-variable "vm-hostname" {
-  type        = string
-  description = "Linux virtual machine host name for the machine."
-  default     = ""
+variable "auto_logon" {
+  description = " Specifies whether or not the VM automatically logs on as Administrator. Default: false."
+  type        = bool
+  default     = null
 }
 
-variable "vsphere_tag_category" {
-  type        = string
-  description = "vSphere Tag Catagory Details"
-}
-
-variable "vsphere_tag_name" {
-  type        = string
-  description = "vSphere Tag Details"
+variable "local_adminpass" {
+  description = "The administrator password for this virtual machine.(Required) when using join_windomain option."
+  default     = null
 }
 
 
 
 
 
+terraform {
+  required_version = ">= 0.13.3"
+}
 
 
 
 
-# ======================== #
-# VMware VMs configuration #
-# ======================== #
+provider "vsphere" {
+  user                 = ""
+  password             = ""
+  vsphere_server       = ""
+  allow_unverified_ssl = "true"
+}
 
-vm-count = "${vm_count}"
-vm-name = "${vm_name}"
-vm-template-name = "${vm_template}"
-vm-cpu = "${vm_cpu}"
-vm-ram = "${vm_ram}"
-vm-guest-id = "${vm_guest_id}"
-vm-hostname = "${vm_hostname}"
-vsphere_tag_category = "devops"
-vsphere_tag_name = "${vm_tag_name}"
+module "rhel" {
+  source               = "../vmware-base-host"
+  vm-template-name     = "RHEL7-Template"
+  vsphere_tag_category = "devops"
+  vsphere-datacenter   = "MyLab"
+  vsphere-cluster      = "LabCluster"
+  vm-datastore         = "SharedVM"
+  vm-network           = "VM Network"
+  vm-count             = "1"
+  vm-name              = "rhel-test"
+  vm-cpu               = "2"
+  vm-ram               = "4096"
+  vm-hostname          = "rhel-test"
+  vsphere_tag_name     = "rhel-test"
+  staticvmname         = "rhel-test"
+  vm-domain            = "vsphere.local"
+}
+  
+  
 
-# ============================ #
-# VMware vSphere configuration #
-# ============================ #
+  
+provider "vsphere" {
+  user                 = ""
+  password             = ""
+  vsphere_server       = ""
+  allow_unverified_ssl = "true"
+}
 
-# VMware vCenter IP/FQDN
-vsphere-vcenter = ""
-
-# VMware vSphere username used to deploy the infrastructure
-vsphere-user = ""
-
-# VMware vSphere password used to deploy the infrastructure
-vsphere-password = ""
-
-# Skip the verification of the vCenter SSL certificate (true/false)
-vsphere-unverified-ssl = "true"
-
-# vSphere datacenter name where the infrastructure will be deployed
-vsphere-datacenter = ""
-
-# vSphere cluster name where the infrastructure will be deployed
-vsphere-cluster = ""
-
-# vSphere Datastore used to deploy VMs
-vm-datastore = ""
-
-# vSphere Network used to deploy VMs
-vm-network = ""
-
-# Linux virtual machine domain name
-vm-domain = "vsphere.local"
+module "rhel" {
+  source               = "../vmware-base-host"
+  vm-template-name     = "win2019-template"
+  vsphere_tag_category = "devops"
+  vsphere-datacenter   = "MyLab"
+  vsphere-cluster      = "LabCluster"
+  vm-datastore         = "SharedVM"
+  vm-network           = "VM Network"
+  vm-count             = "1"
+  vm-name              = "win-test"
+  vm-cpu               = "2"
+  vm-ram               = "6144"
+  vm-hostname          = "win-test"
+  vsphere_tag_name     = "win-test"
+  staticvmname         = "win-test"
+  scsi_type            = "lsilogic-sas"
+  is_windows_image     = true
+  firmware             = "bios"
+  auto_logon           = "true"
+  local_adminpass      = ""
+}
+  
+  
