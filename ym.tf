@@ -316,4 +316,66 @@ module "rhel" {
   local_adminpass      = ""
 }
   
-  
+ ---
+
+# Install xfs package
+- name: Install xfs package
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items: "{{ pkgs }}"
+
+# Create directory if it doesn't exist
+- name: Create mount directory if it doesn't exist
+  file:
+    path: "{{ mount_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+
+# Gather facts about mounted devices
+- name: Create list of mounted devices
+  set_fact:
+    mounted_devices: "{{ ansible_mounts|json_query('[].device') }}"
+
+- debug:
+    msg: "{{ mounted_devices }}"
+
+# Create filesystem if not in the mounted device list
+- name: Create File System
+  filesystem:
+    fstype: "{{ fstype }}"
+    dev: "{{ mount_src }}"
+  when: mount_src not in mounted_devices
+
+# Mount filesystem to path
+- name: Mount File System
+  mount:
+    path: "{{ mount_path }}"
+    src: "{{ mount_src }}"
+    fstype: "{{ fstype }}"
+    state: mounted
+  when: mount_src not in mounted_devices
+
+# Get UUID of new device
+- name: "Get UUID of new"
+  command: "lsblk -no UUID {{ mount_src }}"
+  register: uuid_output
+
+- debug:
+    msg: "{{ uuid_output }}"
+
+# Mount on system reboot
+- name: Add mount details to /etc/fstab
+  lineinfile: 
+    backup: yes
+    state: present
+    path: "{{ fstab_path }}"
+    line: 'UUID={{ uuid_output.stdout }}  {{ mount_path }}  {{ fstype }}  defaults,nofail  0  2'
+
+
+pkgs:
+  - xfsprogs
+
+fstab_path: /etc/fstab
